@@ -1,0 +1,78 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>NikeHub</title>
+<style>
+html,body{margin:0;height:100%;background:#000;color:#888;font:14px system-ui,sans-serif}
+#f{position:fixed;inset:0;width:100%;height:100%;border:0;display:none}
+#s{padding:20px}
+#t{position:fixed;left:50%;bottom:16px;transform:translateX(-50%);display:none;z-index:5;background:#222;color:#fff;
+   border:1px solid #555;border-radius:10px;padding:10px 14px;font:700 13px system-ui,sans-serif;cursor:pointer}
+</style>
+</head>
+<body>
+<div id="s">Loading latest version…</div>
+<iframe id="f" allow="fullscreen; autoplay; clipboard-write"></iframe>
+<div id="t">New version available — tap to update</div>
+<script>
+(function () {
+  // ===== SETTINGS (auto-detected on GitHub Pages, edit only if needed) =====
+  var CFG = {
+    user: 'iaingaines31-afk',
+    repo: 'nike-hub-api',
+    branch: 'main',
+    pages: { '1': 'nikehub350.html', '2': 'cloudnike.html' }, // open index.html?v=2 for the second one
+    checkEveryMs: 300000 // look for updates every 5 minutes
+  };
+  try { // on user.github.io/repo/ the user and repo come from the address bar
+    var h = location.hostname.match(/^([^.]+)\.github\.io$/i);
+    if (h) { CFG.user = h[1]; var seg = location.pathname.split('/')[1]; if (seg) CFG.repo = seg; }
+  } catch (e) {}
+  var PAGE = CFG.pages[new URLSearchParams(location.search).get('v')] || CFG.pages['1'];
+  var LK = 'nh-launcher-sha', cur = '';
+  function $(i) { return document.getElementById(i); }
+  function cdn(ref) { return 'https://cdn.jsdelivr.net/gh/' + CFG.user + '/' + CFG.repo + '@' + ref + '/'; }
+
+  // Newest commit id of the branch. A new id means a new URL, so jsDelivr's cache can never serve stale files.
+  async function latestSha() {
+    var r = await fetch('https://api.github.com/repos/' + CFG.user + '/' + CFG.repo + '/commits/' + CFG.branch,
+      { headers: { Accept: 'application/vnd.github.sha' }, cache: 'no-store' });
+    if (!r.ok) throw new Error('API ' + r.status);
+    var s = (await r.text()).trim();
+    if (!/^[0-9a-f]{40}$/.test(s)) throw new Error('bad id');
+    return s;
+  }
+  async function getHtml(ref) {
+    var r = await fetch(cdn(ref) + PAGE + (ref === CFG.branch ? '?t=' + Date.now() : ''), { cache: 'no-store' });
+    if (!r.ok) throw new Error('HTTP ' + r.status);
+    return r.text();
+  }
+
+  async function run() {
+    var sha = '';
+    try { sha = await latestSha(); try { localStorage.setItem(LK, sha); } catch (e) {} }
+    catch (e) { try { sha = localStorage.getItem(LK) || ''; } catch (x) {} }   // GitHub busy: use last known version
+    var tries = sha ? [sha, CFG.branch] : [CFG.branch], html = null, used = '';
+    for (var i = 0; i < tries.length && html === null; i++) {
+      try { html = await getHtml(tries[i]); used = tries[i]; } catch (e) {}
+    }
+    if (html === null) { $('s').textContent = 'Could not load the site. Check your connection, then refresh.'; return; }
+    // point the page's own jsDelivr links (e.g. the game file) at the same fresh version
+    if (used !== CFG.branch) html = html.split('/' + CFG.repo + '@' + CFG.branch + '/').join('/' + CFG.repo + '@' + used + '/');
+    $('f').srcdoc = html; $('f').style.display = 'block'; $('s').style.display = 'none';
+    cur = used === CFG.branch ? '' : used;
+
+    async function check() {
+      try { var n = await latestSha(); if (cur && n !== cur) $('t').style.display = 'block'; } catch (e) {}
+    }
+    setInterval(check, CFG.checkEveryMs);
+    document.addEventListener('visibilitychange', function () { if (!document.hidden) check(); });
+    $('t').onclick = function () { location.reload(); };
+  }
+  run();
+})();
+</script>
+</body>
+</html>
