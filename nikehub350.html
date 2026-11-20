@@ -3296,7 +3296,7 @@ document.addEventListener('keydown', function (e) {
     if (last) {
       var b = document.createElement('button');
       b.textContent = '\u25B6 Resume ' + last.replace(/^cl/i, '');
-      b.style.cssText = 'position:fixed;right:14px;top:14px;z-index:9999;padding:10px 14px;' +
+      b.style.cssText = 'position:fixed;right:14px;top:58px;z-index:9999;padding:10px 14px;' +
         'background:rgba(18,18,18,.88);color:#e8e8e8;border:1px solid rgba(255,255,255,.09);' +
         'border-radius:10px;font:800 13px Parkinsans,sans-serif;cursor:pointer';
       b.onclick = function () { launchGame(last); };
@@ -3306,22 +3306,95 @@ document.addEventListener('keydown', function (e) {
 })();
 </script>
 
+<!-- NikeHub auto game loader: drop any .html game into the "games" folder of your repo and it appears by itself -->
+<script>
+(function () {
+  var BASE = 'https://cdn.jsdelivr.net/gh/iaingaines31-afk/nike-hub-api@main/'; // the launcher keeps this current
+  var U, R, REF;
+  try { var N = window.parent && window.parent.NH; if (N && N.user) { U = N.user; R = N.repo; REF = N.ref; } } catch (e) {}
+  if (!U) { var m = BASE.match(/gh\/([^/]+)\/([^@]+)@([^/]+)\//); U = m[1]; R = m[2]; REF = m[3]; }
+  var FOLDER = 'games', MINE = {};
+  function folderUrl() { return 'https://cdn.jsdelivr.net/gh/' + U + '/' + R + '@' + REF + '/' + FOLDER + '/'; }
+
+  async function listGames() {
+    try { var c = JSON.parse(sessionStorage.getItem('nh-mine-list') || 'null'); if (c && Date.now() - c.t < 600000) return c.l; } catch (e) {}
+    var list = null;
+    try { // 1) GitHub folder listing
+      var r = await fetch('https://api.github.com/repos/' + U + '/' + R + '/contents/' + FOLDER + '?ref=' + encodeURIComponent(REF), { cache: 'no-store' });
+      if (r.ok) list = (await r.json()).filter(function (f) { return f.type === 'file'; }).map(function (f) { return f.name; });
+    } catch (e) {}
+    if (!list) { try { // 2) jsDelivr file listing
+      var r2 = await fetch('https://data.jsdelivr.com/v1/packages/gh/' + U + '/' + R + '@' + REF + '?structure=flat', { cache: 'no-store' });
+      if (r2.ok) list = (await r2.json()).files.map(function (f) { return f.name; })
+        .filter(function (n) { return n.indexOf('/' + FOLDER + '/') === 0 && n.split('/').length === 3; })
+        .map(function (n) { return n.slice(FOLDER.length + 2); });
+    } catch (e) {} }
+    if (!list) { try { return JSON.parse(localStorage.getItem('nh-mine-last') || '[]'); } catch (e) { return []; } } // 3) last known list
+    try { sessionStorage.setItem('nh-mine-list', JSON.stringify({ t: Date.now(), l: list })); localStorage.setItem('nh-mine-last', JSON.stringify(list)); } catch (e) {}
+    return list;
+  }
+
+  // open games from the games folder (everything else goes to the normal loader)
+  var inner = window.launchGame;
+  window.launchGame = async function (file) {
+    if (!MINE[file]) return inner.apply(this, arguments);
+    var label = file.replace(/^cl/i, ''), t = toast({ text: 'Loading ' + label + '\u2026' });
+    try {
+      var r = await fetch(folderUrl() + encodeURIComponent(MINE[file]), { cache: 'no-store' });
+      if (!r.ok) throw new Error('HTTP ' + r.status);
+      var code = await r.text(), base = '<base href="' + folderUrl() + '">';
+      code = code.indexOf('<head>') >= 0 ? code.replace('<head>', '<head>' + base) : base + code;
+      try { currentGameFile = file; } catch (e) {}
+      try { addRecent(file); } catch (e) {}
+      t.remove(); openOverlay(code);
+    } catch (e) { t.remove(); toast({ text: 'Could not load ' + label + ': ' + e.message, retry: function () { window.launchGame(file); } }); }
+  };
+
+  (async function () {
+    try {
+      var names = (await listGames()).filter(function (n) { return /\.html?$/i.test(n); }), ids = [];
+      names.forEach(function (n) {
+        var id = 'cl' + n.replace(/\.html?$/i, '');
+        if (files.indexOf(id) >= 0 && !MINE[id]) id += '-new';
+        MINE[id] = n; if (files.indexOf(id) < 0) ids.push(id);
+      });
+      if (ids.length) { files.unshift.apply(files, ids); filterGames(); }
+    } catch (e) { console.warn('Game loader:', e); }
+  })();
+})();
+</script>
+
 <!-- NikeHub accounts -->
 <style>
-#nh-acc-chip{position:fixed;top:10px;left:50%;transform:translateX(-50%);z-index:9998;padding:8px 14px;background:rgba(18,18,18,.88);color:#e8e8e8;border:1px solid rgba(255,255,255,.09);border-radius:10px;font:800 13px Parkinsans,sans-serif;cursor:pointer}
+#nh-acc-chip{position:fixed;top:10px;right:12px;display:flex;align-items:center;gap:8px;z-index:9998;padding:6px 12px;background:rgba(18,18,18,.88);color:#e8e8e8;border:1px solid rgba(255,255,255,.09);border-radius:10px;font:800 13px Parkinsans,sans-serif;cursor:pointer}
 #nh-acc{display:none;position:fixed;inset:0;z-index:10000;background:rgba(0,0,0,.7);align-items:center;justify-content:center}
-#nh-acc .box{width:min(360px,92vw);background:#161616;border:1px solid rgba(255,255,255,.12);border-radius:14px;padding:18px;color:#e8e8e8;font:800 14px Parkinsans,sans-serif}
-#nh-acc input,#nh-acc button,#nh-dlist button,#nh-du,#nh-dc{font:inherit;color:#e8e8e8;background:#222;border:1px solid rgba(255,255,255,.12);border-radius:8px;padding:9px;margin:4px 0;width:100%;cursor:pointer}
+#nh-acc .box{width:min(380px,92vw);max-height:90vh;overflow:auto;background:#161616;border:1px solid rgba(255,255,255,.12);border-radius:14px;padding:18px;color:#e8e8e8;font:800 14px Parkinsans,sans-serif}
+#nh-acc input,#nh-acc button,#nh-dlist button,#nh-dlist select,#nh-du,#nh-dp,#nh-ds,#nh-dg,#nh-dr,#nh-dw,#nh-dl,#nh-rqb,#nh-dc,#nh-dk{font:inherit;color:#e8e8e8;background:#222;border:1px solid rgba(255,255,255,.12);border-radius:8px;padding:9px;margin:4px 0;width:100%;cursor:pointer}
 #nh-acc .tabs{display:flex;gap:6px}#nh-acc .tabs button{width:50%}#nh-acc .on{background:#444}
+#nh-acc .ln{margin:3px 0;font-size:13px}
 #nh-amsg{min-height:18px;font-size:12px;color:#ff9b9b;margin:6px 0}
 </style>
 <div id="nh-acc-chip">Sign in</div>
 <div id="nh-acc"><div class="box" id="nh-accbox"></div></div>
 <script>
 (function(){
-  // Paste your PUBLIC key here (Dev Menu > Create signing key). It is safe to share: it can check codes but cannot make them.
+  // Paste your PUBLIC key here (Dev Menu > Create signing key). Safe to share: it can check plan codes but not make them.
   var DEV_PUBKEY='';
-  var AK='nikehub-accounts',SK='nikehub-session',enc=new TextEncoder(),mode='in',note='';
+  // ---- PLANS (edit numbers here) ----
+  var PLANS={
+    free:     {label:'Free',                      games:100,      console:0,    wait:10},
+    pro:      {label:'Pro (4 Starbucks/mo)',      games:400,      console:50,   wait:5},
+    master:   {label:'Master (6 Starbucks/mo)',   games:600,      console:100,  wait:5},
+    unlimited:{label:'Unlimited ($10/mo)',        games:Infinity, console:1000, wait:0},
+    owner:    {label:'Owner (unlimited everything)', games:Infinity, console:Infinity, wait:0}
+  };
+  // ---- NEW GAMES: add a game id and the day it came out. Each plan gets it after its 'wait' days (see PLANS). ----
+  var NEW_RELEASES={
+    // 'wilywars':'2026-11-25',
+    // 'othergame':{date:'2026-12-01',cover:'https://cdn.jsdelivr.net/gh/iaingaines31-afk/nike-hub-api@main/covers/othergame.jpg'},  // cover is optional
+  };
+  var PAY_MSG='See Iain and pay, then you will be added or renewed.';
+  var AK='nikehub-accounts',SK='nikehub-session',enc=new TextEncoder(),mode='in',note='',viaPlan=false;
   function $(i){return document.getElementById(i)}
   function ld(){try{return JSON.parse(localStorage.getItem(AK)||'{}')}catch(e){return{}}}
   function sv(a){try{localStorage.setItem(AK,JSON.stringify(a))}catch(e){}}
@@ -3329,27 +3402,80 @@ document.addEventListener('keydown', function (e) {
   function setMe(u){try{u?localStorage.setItem(SK,u):localStorage.removeItem(SK)}catch(e){}}
   function b64(a){return btoa(String.fromCharCode.apply(null,new Uint8Array(a)))}
   function unb(s){return Uint8Array.from(atob(s),function(c){return c.charCodeAt(0)})}
-  async function hashPw(pw,salt){var k=await crypto.subtle.importKey('raw',enc.encode(pw),'PBKDF2',false,['deriveBits']);
-    return b64(await crypto.subtle.deriveBits({name:'PBKDF2',salt:salt,iterations:200000,hash:'SHA-256'},k,256))}
   function b64u(a){return b64(a).replace(/\+/g,'-').replace(/\//g,'_').replace(/=+$/,'')}
   function unb64u(s){s=s.replace(/-/g,'+').replace(/_/g,'/');while(s.length%4)s+='=';return unb(s)}
+  function devOK(){try{return typeof consoleUnlocked!=='undefined'&&consoleUnlocked}catch(e){return false}}
+  async function hashPw(pw,salt){var k=await crypto.subtle.importKey('raw',enc.encode(pw),'PBKDF2',false,['deriveBits']);
+    return b64(await crypto.subtle.deriveBits({name:'PBKDF2',salt:salt,iterations:200000,hash:'SHA-256'},k,256))}
+  // ---- plan + usage helpers ----
+  function pad(n){return ('0'+n).slice(-2)}
+  function mk(){var d=new Date();return d.getFullYear()+'-'+pad(d.getMonth()+1)}
+  function today(){var d=new Date();return mk()+'-'+pad(d.getDate())}
+  function addMonth(s){var y=+s.slice(0,4),m=+s.slice(5,7),d=+s.slice(8,10);m++;if(m>12){m=1;y++}return y+'-'+pad(m)+'-'+pad(Math.min(d,new Date(y,m,0).getDate()))}
+  function fmtD(s){try{return new Date(s+'T00:00:00').toLocaleDateString(undefined,{month:'short',day:'numeric',year:'numeric'})}catch(e){return s}}
+  function daysLeft(s){return Math.round((new Date(s+'T00:00:00')-new Date(today()+'T00:00:00'))/864e5)}
+  function planOf(a){var p=a.plan||'free';if(a.planExp&&a.planExp<today())p='free';if(a.planStart&&a.planStart>today())p='free';return PLANS[p]?p:'free'}
+  function usage(a){if(!a.usage||a.usage.m!==mk())a.usage={m:mk(),games:0,console:0};return a.usage}
+  function use(kind){var all=ld(),a=all[me()];if(!a)return;usage(a)[kind]++;sv(all)}
+  function left(a,kind){var lim=PLANS[planOf(a)][kind];return lim===Infinity?Infinity:Math.max(0,lim-usage(a)[kind])}
+  // ---- signed plan codes (public-key signatures) ----
   var ALG={name:'ECDSA',namedCurve:'P-256'},SIG={name:'ECDSA',hash:'SHA-256'};
-  function msgFor(u){return enc.encode('nikehub-access:'+u.toLowerCase())}
-  async function verifyCode(u,code){try{if(!DEV_PUBKEY)return false;var k=await crypto.subtle.importKey('jwk',JSON.parse(DEV_PUBKEY),ALG,false,['verify']);return await crypto.subtle.verify(SIG,k,unb64u(code.trim()),msgFor(u))}catch(e){return false}}
-  async function makeCode(u){var j=localStorage.getItem('nikehub-dev-key');if(!j)return null;var k=await crypto.subtle.importKey('jwk',JSON.parse(j),ALG,false,['sign']);return b64u(await crypto.subtle.sign(SIG,k,msgFor(u)))}
-  function chip(){$('nh-acc-chip').textContent=me()?'\uD83D\uDC64 '+me():'Sign in'}
+  async function verifyPlan(code,u){try{if(!DEV_PUBKEY)return null;var parts=code.trim().split('.');if(parts.length!==2)return null;
+    var k=await crypto.subtle.importKey('jwk',JSON.parse(DEV_PUBKEY),ALG,false,['verify']);
+    if(!await crypto.subtle.verify(SIG,k,unb64u(parts[1]),enc.encode('nikehub-plan:'+parts[0])))return null;
+    var p=JSON.parse(new TextDecoder().decode(unb64u(parts[0])));
+    if(p.u!==u||!PLANS[p.p]||!p.s||p.e<today())return null;return p}catch(e){return null}}
+  async function makePlan(u,plan,start){var j=localStorage.getItem('nikehub-dev-key');if(!j)return null;
+    var s=start||today(),e=addMonth(s);
+    var p64=b64u(enc.encode(JSON.stringify({u:u,p:plan,s:s,e:e})));
+    var k=await crypto.subtle.importKey('jwk',JSON.parse(j),ALG,false,['sign']);
+    return p64+'.'+b64u(await crypto.subtle.sign(SIG,k,enc.encode('nikehub-plan:'+p64)))}
+  // ---- UI ----
+  function avEl(a,u,size){var d;
+    if(a&&a.avatar){d=document.createElement('img');d.src=a.avatar;d.alt=''}
+    else{d=document.createElement('div');d.textContent=(u||'?').charAt(0).toUpperCase();d.style.cssText='display:flex;align-items:center;justify-content:center;background:#444;font-weight:800;'}
+    d.style.cssText+=';width:'+size+'px;height:'+size+'px;border-radius:50%;object-fit:cover;flex:none';return d}
+  function chip(){var c=$('nh-acc-chip');c.textContent='';var u=me(),a=ld()[u];if(u&&a)c.append(avEl(a,u,24),document.createTextNode(u));else c.textContent='Sign in'}
+  function pickAvatar(){var f=document.createElement('input');f.type='file';f.accept='image/*';
+    f.onchange=function(){var file=f.files[0];if(!file)return;
+      if(file.size>5e6){note='Picture too big (max 5 MB).';draw();return}
+      var img=new Image(),url=URL.createObjectURL(file);
+      img.onload=function(){var c=document.createElement('canvas');c.width=c.height=128;var x=c.getContext('2d'),s=Math.min(img.width,img.height);
+        x.drawImage(img,(img.width-s)/2,(img.height-s)/2,s,s,0,0,128,128);URL.revokeObjectURL(url);
+        var all=ld(),u=me();if(!all[u])return;all[u].avatar=c.toDataURL('image/jpeg',.82);sv(all);note='Picture saved.';chip();draw()};
+      img.onerror=function(){note='That file is not a picture.';draw()};img.src=url};
+    f.click()}
   function openAcc(msg){note=msg||'';draw();$('nh-acc').style.display='flex'}
   function closeAcc(){$('nh-acc').style.display='none'}
   function el(t,txt,fn,id){var e=document.createElement(t);if(txt)e.textContent=txt;if(fn)e.onclick=fn;if(id)e.id=id;return e}
   function inp(id,ph,type){var i=el('input',0,0,id);i.placeholder=ph;i.type=type||'text';i.autocomplete='off';return i}
+  function ln(t){var d=el('div',t);d.className='ln';return d}
+  function fmt(used,lim){return lim===Infinity?'unlimited':used+' / '+lim+' used'}
   function draw(){
-    var b=$('nh-accbox');b.textContent='';var u=me(),a=ld()[u];
+    var b=$('nh-accbox');b.textContent='';var u=me(),all=ld(),a=all[u];
     if(u&&a){
+      var P=PLANS[planOf(a)],us=usage(a);
+      var arow=el('div');arow.style.cssText='display:flex;align-items:center;gap:12px;margin-bottom:8px';
+      var abt=el('div');abt.style.flex='1';abt.append(el('button',a.avatar?'Change picture':'Add picture',pickAvatar));
+      if(a.avatar)abt.append(el('button','Remove picture',function(){var x=ld();delete x[u].avatar;sv(x);chip();draw()}));
+      arow.append(avEl(a,u,64),abt);b.append(arow);
       b.append(el('h3','Signed in as '+u));
-      b.append(el('div','Console access: '+(a.granted?'GRANTED':'not granted')));
-      if(!a.granted){var c=inp('nh-code','Access code from the dev');b.append(c);
-        b.append(el('button','Apply code',async function(){if(await verifyCode(u,c.value)){var all=ld();all[u].granted=true;sv(all);note='Access granted!';draw()}else{$('nh-amsg').textContent='Wrong code.'}}))}
-      b.append(el('div','',0,'nh-amsg'));
+      b.append(ln('Plan: '+P.label));
+      if(a.plan&&a.plan!=='free'&&a.planExp){
+        if(a.planExp<today())b.append(ln('Your '+PLANS[a.plan].label+' plan ended on '+fmtD(a.planExp)+'. You are on Free now.'));
+        else if(a.planStart>today())b.append(ln('Starts '+fmtD(a.planStart)+' and ends '+fmtD(a.planExp)));
+        else{b.append(ln('Active '+fmtD(a.planStart)+' to '+fmtD(a.planExp)));var dl=daysLeft(a.planExp);if(dl<=5)b.append(ln('Ends in '+dl+' day'+(dl===1?'':'s')+'. Renew soon so you do not lose access.'))}
+      }
+      b.append(ln('Games this month: '+fmt(us.games,P.games)));
+      b.append(ln('Console uses: '+(P.console?fmt(us.console,P.console):'not included')));
+      b.append(ln('New games: '+(P.wait?'after '+P.wait+' days':'instantly')));
+      var pay=ln('\uD83D\uDCB3 To upgrade or renew: '+PAY_MSG);pay.style.cssText='margin:10px 0;padding:8px;border:1px solid #555;border-radius:8px;background:#1d1d1d';b.append(pay);
+      var c=inp('nh-code','Plan code from the dev (to change plan)');b.append(c);
+      b.append(el('button','Apply plan code',async function(){
+        var p=await verifyPlan(c.value,u);
+        if(!p)return $('nh-amsg').textContent='Invalid, expired or not for this username.';
+        var x=ld();x[u].plan=p.p;x[u].planStart=p.s;x[u].planExp=p.e;sv(x);note='Plan updated: '+PLANS[p.p].label;draw()}));
+      b.append(el('div',note,0,'nh-amsg'));
       b.append(el('button','Sign out',function(){setMe('');chip();draw()}));
     }else{
       var t=el('div');t.className='tabs';
@@ -3363,11 +3489,12 @@ document.addEventListener('keydown', function (e) {
         try{
           if(!/^[a-z0-9_]{3,20}$/.test(name))return m.textContent='Username: 3-20 letters, numbers or _';
           if(mode==='new'){
+            if(Object.keys(all).length>=1&&!devOK())return m.textContent='This browser already has an account. Sign in with it instead.';
             if(all[name])return m.textContent='That username is taken on this device.';
             if(pw.value.length<8)return m.textContent='Password needs 8+ characters.';
             if(pw.value!==pw2.value)return m.textContent='Passwords do not match.';
             var s=crypto.getRandomValues(new Uint8Array(16));
-            all[name]={salt:b64(s),hash:await hashPw(pw.value,s),granted:false};sv(all);
+            all[name]={salt:b64(s),hash:await hashPw(pw.value,s),plan:'free',planExp:'',usage:{m:mk(),games:0,console:0}};sv(all);
           }else{
             if(!all[name]||await hashPw(pw.value,unb(all[name].salt))!==all[name].hash)return m.textContent='Wrong username or password.';
           }
@@ -3381,22 +3508,137 @@ document.addEventListener('keydown', function (e) {
   $('nh-acc-chip').onclick=function(){openAcc('')};
   $('nh-acc').onclick=function(e){if(e.target===this)closeAcc()};
   chip();
-  // ---- gate the console ----
+  // ---- custom wait screen for new games ----
+  function availAt(rel,n){var d=new Date(rel+'T00:00:00');d.setDate(d.getDate()+n);return d}
+  var waitTimer=0;
+  function closeWait(){clearInterval(waitTimer);var o=$('nh-wait');if(o)o.style.display='none'}
+  function hue(s){var h=0;for(var i=0;i<s.length;i++)h=(h*31+s.charCodeAt(i))%360;return h}
+  function coverCss(f,c){return c?'background:#000 url("'+String(c).replace(/["\\()]/g,'')+'") center/cover':'background:radial-gradient(circle at 50% 20%,hsl('+hue(f)+',75%,28%),#05060a 70%)'}
+  function sty(b){b.style.cssText='font:inherit;color:#e8e8e8;background:rgba(30,30,30,.9);border:1px solid rgba(255,255,255,.2);border-radius:8px;padding:10px;margin:4px 0;width:100%;cursor:pointer'}
+  function gname(f){return f.replace(/^cl/i,'').replace(/[_-]+/g,' ')}
+  function relOf(f){var v=NEW_RELEASES[f];return v&&typeof v==='object'?v:{date:v,cover:''}}
+  // cinematic "coming soon" cover with a big countdown
+  function showWait(file,rel,planKey,cover){
+    var P=PLANS[planKey],start=new Date(rel+'T00:00:00'),av=availAt(rel,P.wait),name=gname(file);
+    var o=$('nh-wait');if(!o){o=el('div',0,0,'nh-wait');document.body.append(o)}
+    o.style.cssText='position:fixed;inset:0;z-index:10001;display:flex;align-items:center;justify-content:center;overflow:auto;color:#fff;font-family:Parkinsans,sans-serif;'+coverCss(file,cover);
+    o.textContent='';
+    var shade=el('div');shade.style.cssText='position:fixed;inset:0;background:linear-gradient(rgba(0,0,0,.35),rgba(0,0,0,.9))';o.append(shade);
+    var bx=el('div');bx.style.cssText='position:relative;width:min(760px,94vw);text-align:center;padding:24px 10px';
+    var tag=el('div','COMING SOON');tag.style.cssText='letter-spacing:.5em;font-size:13px;opacity:.8;font-weight:800';
+    var t=el('div',name.toUpperCase());t.style.cssText='font-weight:800;font-size:clamp(30px,9vw,84px);letter-spacing:.06em;line-height:1.05;margin:14px 0;text-shadow:0 4px 40px rgba(0,0,0,.8)';
+    var sub=el('div','Unlocks for '+P.label.split(' (')[0]+' on '+av.toLocaleDateString(undefined,{weekday:'long',month:'long',day:'numeric',year:'numeric'}));sub.style.cssText='opacity:.85;margin-bottom:18px;font-weight:700';
+    var row=el('div');row.style.cssText='display:flex;gap:10px;justify-content:center;flex-wrap:wrap';var nums=[];
+    ['DAYS','HOURS','MINS','SECS'].forEach(function(l){var c=el('div');c.style.cssText='min-width:clamp(64px,18vw,120px);padding:12px 6px;background:rgba(255,255,255,.08);border:1px solid rgba(255,255,255,.18);border-radius:12px';
+      var n=el('div','00');n.style.cssText='font-size:clamp(30px,9vw,64px);font-weight:800;font-variant-numeric:tabular-nums';
+      var s=el('div',l);s.style.cssText='font-size:11px;letter-spacing:.3em;opacity:.7';c.append(n,s);row.append(c);nums.push(n)});
+    var bar=el('div');bar.style.cssText='height:6px;background:rgba(255,255,255,.15);border-radius:6px;overflow:hidden;margin:18px auto;max-width:520px';
+    var fill=el('div');fill.style.cssText='height:100%;width:0;background:#fff';bar.append(fill);
+    var tiers=el('div',Object.keys(PLANS).map(function(k){return PLANS[k].label.split(' (')[0]+': '+(PLANS[k].wait?PLANS[k].wait+' days':'instantly')}).join('  \u00B7  '));tiers.style.cssText='font-size:12px;opacity:.7;margin:10px 0';
+    var pay=el('div','\uD83D\uDCB3 Want it now? '+PAY_MSG);pay.style.cssText='margin:12px auto;padding:10px;max-width:520px;border:1px solid rgba(255,255,255,.25);border-radius:10px;background:rgba(0,0,0,.4);font-size:13px';
+    var bw=el('div');bw.style.cssText='max-width:520px;margin:0 auto';
+    var b1=el('button','Upgrade / renew',function(){closeWait();openAcc('')}),b2=el('button','Close',closeWait);sty(b1);sty(b2);bw.append(b1,b2);
+    bx.append(tag,t,sub,row,bar,tiers,pay,bw);o.append(bx);
+    function tick(){var ms=av-Date.now();
+      if(ms<=0){nums.forEach(function(n){n.textContent='00'});sub.textContent='\u2705 Unlocked! Close this and open the game.';fill.style.width='100%';clearInterval(waitTimer);return}
+      var s=Math.floor(ms/1000),v=[Math.floor(s/86400),Math.floor(s%86400/3600),Math.floor(s%3600/60),s%60];
+      nums.forEach(function(n,i){n.textContent=String(v[i]).padStart(2,'0')});
+      fill.style.width=Math.min(100,Math.max(0,(Date.now()-start)/(av-start)*100))+'%'}
+    clearInterval(waitTimer);tick();waitTimer=setInterval(tick,1000)}
+  // ---- New Releases page (cover cards with live countdowns) ----
+  var relTimer=0;
+  function closeRel(){clearInterval(relTimer);var o=$('nh-rel');if(o)o.style.display='none'}
+  function showReleases(){
+    var a=ld()[me()];if(!a){mode='in';return openAcc('Sign in to see new releases.')}
+    var pk=planOf(a),P=PLANS[pk],o=$('nh-rel');if(!o){o=el('div',0,0,'nh-rel');document.body.append(o)}
+    o.style.cssText='position:fixed;inset:0;z-index:10001;overflow:auto;background:#05060a;color:#fff;font-family:Parkinsans,sans-serif;padding:20px';o.textContent='';
+    var h=el('div','NEW RELEASES');h.style.cssText='font-weight:800;font-size:clamp(26px,7vw,52px);letter-spacing:.12em';
+    var s=el('div','Your plan: '+P.label.split(' (')[0]+' \u2014 new games unlock '+(P.wait?'after '+P.wait+' days':'instantly'));s.style.cssText='opacity:.7;margin:6px 0 16px';
+    var cl=el('button','Close',closeRel);sty(cl);cl.style.width='auto';cl.style.padding='8px 18px';
+    var grid=el('div');grid.style.cssText='display:grid;grid-template-columns:repeat(auto-fill,minmax(220px,1fr));gap:14px;margin-top:14px';
+    var keys=Object.keys(NEW_RELEASES).sort(function(x,y){return relOf(y).date<relOf(x).date?-1:1}),cards=[];
+    if(!keys.length)grid.append(el('div','No new releases yet \u2014 check back soon.'));
+    keys.forEach(function(f){var r=relOf(f),av=availAt(r.date,P.wait);
+      var c=el('div');c.style.cssText='position:relative;height:260px;border-radius:14px;overflow:hidden;cursor:pointer;border:1px solid rgba(255,255,255,.15);display:flex;flex-direction:column;justify-content:flex-end;padding:14px;'+coverCss(f,r.cover);
+      var sh=el('div');sh.style.cssText='position:absolute;inset:0;background:linear-gradient(transparent 30%,rgba(0,0,0,.9))';
+      var t=el('div',gname(f).toUpperCase());t.style.cssText='position:relative;font-weight:800;font-size:18px;letter-spacing:.06em';
+      var st=el('div','');st.style.cssText='position:relative;font-size:14px;font-weight:700;margin-top:4px;font-variant-numeric:tabular-nums';
+      c.append(sh,t,st);grid.append(c);cards.push({st:st,av:av});
+      c.onclick=function(){if(Date.now()>=av.getTime()){closeRel();window.launchGame(f)}else{closeRel();showWait(f,r.date,pk,r.cover)}}});
+    o.append(cl,h,s,grid);
+    function tick(){cards.forEach(function(k){var ms=k.av-Date.now();
+      if(ms<=0)k.st.textContent='\u25B6 PLAY NOW';else{var q=Math.floor(ms/1000);k.st.textContent='\u23F3 '+Math.floor(q/86400)+'d '+Math.floor(q%86400/3600)+'h '+Math.floor(q%3600/60)+'m '+(q%60)+'s'}})}
+    clearInterval(relTimer);tick();relTimer=setInterval(tick,1000)}
+  // ---- watcher: tells people the moment a new game unlocks for their plan ----
+  var seenOpen={};
+  function watch(){var a=ld()[me()];if(!a)return;var P=PLANS[planOf(a)];
+    Object.keys(NEW_RELEASES).forEach(function(f){var open=Date.now()>=availAt(relOf(f).date,P.wait).getTime();
+      if(f in seenOpen&&!seenOpen[f]&&open){try{toast({text:'\uD83C\uDF89 '+gname(f)+' is now available!'})}catch(e){}}
+      seenOpen[f]=open})}
+  watch();setInterval(watch,15000);
+  // ---- game requests ----
+  var GH={u:'iaingaines31-afk',r:'nike-hub-api'};
+  try{var NHp=window.parent&&window.parent.NH;if(NHp&&NHp.user){GH.u=NHp.user;GH.r=NHp.repo}}catch(e){}
+  function localReqs(){try{return JSON.parse(localStorage.getItem('nikehub-requests')||'[]')}catch(e){return[]}}
+  function openReq(){
+    var a=ld()[me()],u=me();if(!a){mode='in';return openAcc('Sign in to request a game.')}
+    var o=$('nh-req');if(!o){o=el('div',0,0,'nh-req');document.body.append(o);o.onclick=function(e){if(e.target===o)o.style.display='none'}}
+    o.style.cssText='position:fixed;inset:0;z-index:10002;background:rgba(0,0,0,.75);display:flex;align-items:center;justify-content:center';o.textContent='';
+    var bx=el('div');bx.style.cssText='width:min(380px,92vw);background:#161616;border:1px solid rgba(255,255,255,.12);border-radius:14px;padding:18px;color:#e8e8e8;font:800 14px Parkinsans,sans-serif';
+    var rn=inp('nh-rn','Game name'),rl=inp('nh-rl','Link to the game (optional)'),rt=inp('nh-rt','Note (optional)');[rn,rl,rt].forEach(sty);
+    var msg=el('div','');msg.style.cssText='min-height:18px;font-size:12px;margin:6px 0;color:#9fd2ff';
+    function build(){var n=rn.value.trim();if(!n){msg.textContent='Type the game name first.';return null}
+      var today3=localReqs().filter(function(q){return q.u===u&&Date.now()-q.t<864e5}).length;
+      if(today3>=3){msg.textContent='You can send 3 requests per day. Try again tomorrow.';return null}
+      return {u:u,name:n,link:rl.value.trim(),note:rt.value.trim(),t:Date.now()}}
+    function text(q){return 'Requested by: '+q.u+'\nLink: '+(q.link||'-')+'\nNote: '+(q.note||'-')}
+    function save(q){try{var l=localReqs();l.push(q);localStorage.setItem('nikehub-requests',JSON.stringify(l.slice(-50)))}catch(e){}}
+    var b1=el('button','Send request (opens GitHub)',function(){var q=build();if(!q)return;save(q);
+      window.open('https://github.com/'+GH.u+'/'+GH.r+'/issues/new?title='+encodeURIComponent('[Game request] '+q.name)+'&body='+encodeURIComponent(text(q)),'_blank','noopener');
+      msg.textContent='GitHub opened. Press "Submit new issue" there so Iain gets it (free GitHub account needed).'});
+    var b2=el('button','Copy request text',function(){var q=build();if(!q)return;save(q);
+      try{navigator.clipboard.writeText('[Game request] '+q.name+'\n'+text(q));msg.textContent='Copied. Send it to Iain.'}catch(e){msg.textContent='Could not copy.'}});
+    var b3=el('button','Close',function(){o.style.display='none'});[b1,b2,b3].forEach(sty);
+    bx.append(el('h3','\uD83C\uDFAE Request a game'),rn,rl,rt,msg,b1,b2,b3);o.append(bx)}
+  // add buttons to the floating tools column
+  function addTool(label,fn,id){var tl=$('nh-tools'),b=el('button',label,fn,id);
+    if(tl)tl.insertBefore(b,tl.firstChild);else{b.style.cssText='position:fixed;right:14px;bottom:'+(60+document.querySelectorAll('.nh-tool').length*46)+'px;z-index:9999;padding:10px 14px;background:rgba(18,18,18,.88);color:#e8e8e8;border:1px solid rgba(255,255,255,.09);border-radius:10px;font:800 13px Parkinsans,sans-serif;cursor:pointer';b.className='nh-tool';document.body.append(b)}}
+  addTool('\uD83C\uDFAE Request a game',openReq,'nh-reqbtn');addTool('\uD83C\uDD95 New releases',showReleases,'nh-new');
+  // put the buttons in the sidebar, right under Instant Exit
+  (function(){var sb=document.querySelector('.search-sidebar');if(!sb)return;
+    ['nh-reqbtn','nh-new','nh-data','nh-full'].forEach(function(id){var b=$(id);if(b){b.className='action-btn';b.style.cssText='';sb.appendChild(b)}});
+    var r=$('nh-rand');if(r)r.style.display='none'})();
+  // ---- gate: games ----
+  var origLaunch=window.launchGame;
+  window.launchGame=function(file){
+    var a=ld()[me()];
+    if(!a){mode='in';return openAcc('Sign in to play. Free accounts get '+PLANS.free.games+' games a month.')}
+    var P=PLANS[planOf(a)],R0=NEW_RELEASES[file]?relOf(file):null;
+    if(R0&&Date.now()<availAt(R0.date,P.wait).getTime())return showWait(file,R0.date,planOf(a),R0.cover);
+    if(left(a,'games')<=0)return openAcc('You used all '+P.games+' games this month. Upgrade your plan or wait for next month. '+PAY_MSG);
+    use('games');
+    return origLaunch.apply(this,arguments);
+  };
+  // ---- gate: console ----
   var orig=window.toggleConsole,gate={dev:function(){orig()}};
   window.toggleConsole=function(){
-    var pn=$('consolePanel');
-    if((pn&&pn.style.display==='flex')||(typeof consoleUnlocked!=='undefined'&&consoleUnlocked))return orig.apply(this,arguments);
+    var pn=$('consolePanel'),open=pn&&pn.style.display==='flex';
+    if(open){var r=orig.apply(this,arguments);if(viaPlan){try{consoleUnlocked=false}catch(e){}viaPlan=false}return r}
+    if(viaPlan){try{consoleUnlocked=false}catch(e){}viaPlan=false}
+    if(devOK())return orig.apply(this,arguments);
     var a=ld()[me()];
     if(!a){mode='in';return openAcc('Sign in to use the console.')}
-    if(!a.granted)return openAcc('Console access has not been granted to your account. Ask the dev for an access code.');
-    try{consoleUnlocked=true}catch(e){}
+    var P=PLANS[planOf(a)];
+    if(!P.console)return openAcc('The console needs the Pro plan or higher. '+PAY_MSG);
+    if(left(a,'console')<=0)return openAcc('You used all '+P.console+' console uses this month. '+PAY_MSG);
+    use('console');viaPlan=true;try{consoleUnlocked=true}catch(e){}
     return orig.apply(this,arguments);
   };
-  // ---- dev menu: make codes + grant/revoke ----
+  // ---- dev menu: plans ----
   var dm=document.querySelector('#devModal .modal-content'),anchor=$('devMsg');
   if(dm&&anchor){
-    var w=document.createElement('div');
-    w.innerHTML='<label>Console access</label><input id="nh-du" class="search-input" placeholder="USERNAME"><button id="nh-dk" class="action-btn">Create signing key (once)</button><button id="nh-dc" class="action-btn">Make access code</button><div id="nh-dout" style="font-size:12px;word-break:break-all;min-height:14px"></div><div id="nh-dlist"></div>';
+    var w=document.createElement('div'),opts=Object.keys(PLANS).map(function(k){return '<option value="'+k+'">'+PLANS[k].label+'</option>'}).join('');
+    w.innerHTML='<label>My plan (this account)</label><select id="nh-my">'+opts+'</select><label>Plans for other people</label><input id="nh-du" class="search-input" placeholder="USERNAME"><select id="nh-dp">'+opts+'</select><input id="nh-ds" type="date" title="Start date (leave blank for today)"><button id="nh-dk" class="action-btn">Create signing key (once)</button><button id="nh-dc" class="action-btn">Make plan code (1 month) </button><label>New games</label><input id="nh-dg" class="search-input" placeholder="GAME ID (e.g. wilywars)"><input id="nh-dr" type="date" title="Release date (blank = today)"><button id="nh-dw" class="action-btn">Preview wait screen (uses the plan chosen above)</button><button id="nh-dl" class="action-btn">Make NEW_RELEASES line</button><div id="nh-dout" style="font-size:12px;word-break:break-all;min-height:14px"></div><div id="nh-dlist"></div><label>Game requests (refreshes every 60 seconds)</label><div id="nh-rqs" style="font-size:12px;color:#aaa"></div><button id="nh-rqb" class="action-btn">Refresh now</button><div id="nh-rq"></div>';
     dm.insertBefore(w,anchor);
     $('nh-dk').onclick=async function(){var o=$('nh-dout');try{
       if(localStorage.getItem('nikehub-dev-key')&&!confirm('A key already exists. Replace it? Old codes will stop working.'))return;
@@ -3404,11 +3646,40 @@ document.addEventListener('keydown', function (e) {
       localStorage.setItem('nikehub-dev-key',JSON.stringify(await crypto.subtle.exportKey('jwk',kp.privateKey)));
       o.textContent='Public key (paste between the quotes of DEV_PUBKEY in nikehub350.html, then re-upload): '+JSON.stringify(await crypto.subtle.exportKey('jwk',kp.publicKey))}catch(e){o.textContent='Error: '+e.message}};
     $('nh-dc').onclick=async function(){var u=$('nh-du').value.trim().toLowerCase(),o=$('nh-dout');if(!u){o.textContent='';return}
-      var c=await makeCode(u);o.textContent=c?('Code for '+u+': '+c):'Create a signing key first.'};
+      var st=$('nh-ds').value||today(),c=await makePlan(u,$('nh-dp').value,st);o.textContent=c?('Plan code for '+u+' ('+$('nh-dp').value+', '+st+' to '+addMonth(st)+'): '+c):'Create a signing key first.'};
+    $('nh-my').onchange=function(){var x=ld(),u=me();if(!x[u]){$('nh-dout').textContent='Sign in first (top of the page), then pick your plan.';return}
+      x[u].plan=$('nh-my').value;x[u].planStart='';x[u].planExp='';sv(x);chip()};
+    $('nh-dl').onclick=function(){var g=$('nh-dg').value.trim(),r=$('nh-dr').value||today();$('nh-dout').textContent=g?("Paste inside NEW_RELEASES in nikehub350.html: '"+g+"':'"+r+"',"):'Type a game id first.'};
+    $('nh-dw').onclick=function(){var g=$('nh-dg').value.trim()||'example game',k=$('nh-dp').value;
+      if(!PLANS[k].wait)return $('nh-dout').textContent='That plan has no wait. Pick Free, Pro or Master in the plan list above.';
+      showWait(g,$('nh-dr').value||today(),k)};
+    var wasVis=false,reqErr='';
+    async function refreshReq(){
+      var out=[];reqErr='';
+      try{var r=await fetch('https://api.github.com/repos/'+GH.u+'/'+GH.r+'/issues?state=open&per_page=100',{cache:'no-store'});
+        if(r.ok)(await r.json()).forEach(function(i){if(!i.pull_request&&/^\[game request\]/i.test(i.title))out.push({name:i.title.replace(/^\[game request\]\s*/i,''),body:i.body||'',date:(i.created_at||'').slice(0,10),url:i.html_url,src:'GitHub'})});
+        else reqErr='GitHub answered '+r.status+' (try again soon)'}catch(e){reqErr=e.message}
+      localReqs().forEach(function(q){out.push({name:q.name,body:'By '+q.u+(q.link?' \u2014 '+q.link:'')+(q.note?' \u2014 '+q.note:''),date:new Date(q.t).toISOString().slice(0,10),url:'',src:'this browser'})});
+      out.sort(function(x,y){return x.date<y.date?1:-1});
+      var L=$('nh-rq');L.textContent='';
+      $('nh-rqs').textContent='Updated '+new Date().toLocaleTimeString()+' \u2014 '+out.length+' request'+(out.length===1?'':'s')+(reqErr?' \u2014 '+reqErr:'');
+      out.forEach(function(q){var d=el('div');d.style.cssText='margin:6px 0;padding:8px;border:1px solid rgba(255,255,255,.12);border-radius:8px;font-size:12px;word-break:break-word';
+        var b=el('b',q.name);d.append(b,el('div',q.date+' \u00B7 '+q.src),el('div',q.body.slice(0,160)));
+        if(/^https:\/\/github\.com\//.test(q.url)){var al=document.createElement('a');al.href=q.url;al.target='_blank';al.rel='noopener';al.textContent='Open on GitHub';al.style.color='#9fd2ff';d.append(al)}
+        L.append(d)})}
+    $('nh-rqb').onclick=refreshReq;
+    setInterval(function(){if(wasVis)refreshReq()},60000);
+    var last='';
     setInterval(function(){
-      if($('devModal').style.display==='none'||!$('devModal').offsetParent)return;
-      var L=$('nh-dlist'),all=ld();L.textContent='';
-      Object.keys(all).forEach(function(n){L.append(el('button',n+' \u2014 '+(all[n].granted?'GRANTED (tap to revoke)':'no access (tap to grant)'),function(){var x=ld();x[n].granted=!x[n].granted;sv(x)}))});
+      if($('devModal').style.display==='none'||!$('devModal').offsetParent){wasVis=false;return}
+      if(!wasVis){wasVis=true;refreshReq()}
+      var my=$('nh-my'),a0=ld()[me()];if(my&&document.activeElement!==my){my.value=a0?planOf(a0):'free';my.disabled=!a0}
+      var all=ld(),sig=JSON.stringify(all);if(sig===last)return;last=sig;
+      var L=$('nh-dlist');L.textContent='';
+      Object.keys(all).forEach(function(n){var a=all[n],us=a.usage&&a.usage.m===mk()?a.usage:{games:0,console:0},P=PLANS[planOf(a)];
+        L.append(ln(n+' \u2014 '+P.label+(a.planExp?' ['+a.planStart+' to '+a.planExp+']':'')+' \u2014 games '+us.games+'/'+(P.games===Infinity?'\u221E':P.games)+', console '+us.console+'/'+(P.console===Infinity?'\u221E':P.console)));
+        var s=document.createElement('select');s.innerHTML=opts;s.value=planOf(a);
+        s.onchange=function(){var x=ld();x[n].plan=s.value;x[n].planStart='';x[n].planExp='';sv(x)};L.append(s)});
     },1000);
   }
 })();
