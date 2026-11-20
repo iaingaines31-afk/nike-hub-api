@@ -1,0 +1,21 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>NikeHub</title>
+<style>html,body{margin:0;background:#000;color:#888;font-family:sans-serif}</style>
+</head>
+<body>
+<p style="padding:20px">Loading…</p>
+<script>
+// jsDelivr serves .html as plain text, so fetch the page and render it ourselves.
+var BASE = "https://cdn.jsdelivr.net/gh/iaingaines31-afk/nike-hub-api@main/";
+var PAGE = "nikehub350.html"; // change to cloudnike.html for the other version
+fetch(BASE + PAGE + "?t=" + Date.now())
+  .then(function (r) { if (!r.ok) throw new Error("HTTP " + r.status); return r.text(); })
+  .then(function (html) { document.open(); document.write(html); document.close(); })
+  .catch(function (e) { document.body.innerHTML = "<p style='padding:20px'>Could not load " + PAGE + " (" + e.message + ")</p>"; });
+</script>
+</body>
+</html>
