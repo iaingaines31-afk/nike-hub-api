@@ -1,0 +1,60 @@
+<!-- LOCK TOOL (keep on YOUR computer, do not upload to the repo)
+HOW TO USE: copy this whole file into a new file, save it as lock-tool.html, and open it in a browser.
+Paste your add-on code, type a strong passphrase (20+ characters), press Lock, and save the result
+as a .js file inside the data-addons folder of your repo. Runs offline. Nothing is uploaded. -->
+<!DOCTYPE html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Lock an add-on</title>
+<style>body{background:#000;color:#e8e8e8;font:700 15px system-ui,sans-serif;max-width:720px;margin:20px auto;padding:0 14px}
+textarea,input,button{font:inherit;color:inherit;background:#161616;border:1px solid #444;border-radius:10px;padding:10px;width:100%;margin:6px 0;box-sizing:border-box}
+button{cursor:pointer;width:auto}#m{color:#9fd2ff;min-height:20px}</style></head><body>
+<h1>Lock an add-on</h1>
+<p>Your code must look like: <code>(function (NHData, PASS) { ... })(NHData, PASS);</code> (see dev-console-source.txt).</p>
+<textarea id="code" rows="10" placeholder="Paste your add-on code here"></textarea>
+<input id="pw" type="password" placeholder="Passphrase (20+ characters)">
+<button id="go">Lock it</button><button id="dl" style="display:none">Download as .js</button><div id="m"></div>
+<textarea id="out" rows="8" readonly placeholder="Locked file appears here"></textarea>
+<script>
+const STUB = String.raw`// LOCKED ADD-ON. Encrypted with AES-256-GCM, key from your passphrase via PBKDF2 (600,000 rounds).
+// This file is safe to keep in a public repo: it cannot be read or run without the passphrase.
+(function () {
+  var BLOB = __BLOB__;
+  NHData.register({ name: '\uD83D\uDD12 Dev console (locked)', render: function (box, api) {
+    var pw = document.createElement('input'); pw.type = 'password'; pw.placeholder = 'Dev passphrase'; pw.autocomplete = 'off';
+    var b = document.createElement('button'); b.textContent = 'Unlock'; var m = document.createElement('div');
+    function u8(s) { return Uint8Array.from(atob(s), function (c) { return c.charCodeAt(0); }); }
+    b.onclick = async function () {
+      m.textContent = 'Unlocking\u2026';
+      try {
+        var k0 = await crypto.subtle.importKey('raw', new TextEncoder().encode(pw.value), 'PBKDF2', false, ['deriveKey']);
+        var k = await crypto.subtle.deriveKey({ name: 'PBKDF2', salt: u8(BLOB.salt), iterations: 600000, hash: 'SHA-256' }, k0, { name: 'AES-GCM', length: 256 }, false, ['decrypt']);
+        var code = new TextDecoder().decode(await crypto.subtle.decrypt({ name: 'AES-GCM', iv: u8(BLOB.iv) }, k, u8(BLOB.data)));
+        var pass = pw.value; pw.value = ''; box.textContent = 'Unlocked \u2014 the Dev console is below.';
+        new Function('NHData', 'PASS', code)(api, pass);
+      } catch (e) { m.textContent = 'Wrong passphrase or damaged file.'; }
+    };
+    box.append(pw, b, m);
+  } });
+})();
+`;
+async function lockCode(code, pass, STUB) {
+  var enc = new TextEncoder(), salt = crypto.getRandomValues(new Uint8Array(16)), iv = crypto.getRandomValues(new Uint8Array(12));
+  var k0 = await crypto.subtle.importKey('raw', enc.encode(pass), 'PBKDF2', false, ['deriveKey']);
+  var k = await crypto.subtle.deriveKey({ name: 'PBKDF2', salt: salt, iterations: 600000, hash: 'SHA-256' }, k0, { name: 'AES-GCM', length: 256 }, false, ['encrypt']);
+  var ct = await crypto.subtle.encrypt({ name: 'AES-GCM', iv: iv }, k, enc.encode(code));
+  var b = function (a) { return btoa(String.fromCharCode.apply(null, new Uint8Array(a))); };
+  return STUB.replace('__BLOB__', JSON.stringify({ v: 1, salt: b(salt), iv: b(iv), data: b(ct) }));
+}
+
+document.getElementById('go').onclick = async () => {
+  const m = document.getElementById('m'), p = document.getElementById('pw').value, c = document.getElementById('code').value;
+  if (p.length < 20) return m.textContent = 'Use a passphrase of at least 20 characters.';
+  if (!c.trim()) return m.textContent = 'Paste your code first.';
+  m.textContent = 'Locking (a few seconds)...';
+  try { new Function('NHData', 'PASS', c); } catch (e) { return m.textContent = 'Your code has an error: ' + e.message; }
+  document.getElementById('out').value = await lockCode(c, p, STUB);
+  document.getElementById('dl').style.display = 'inline-block'; m.textContent = 'Done. Save it as a .js file in data-addons.';
+};
+document.getElementById('dl').onclick = () => { const a = document.createElement('a');
+  a.href = URL.createObjectURL(new Blob([document.getElementById('out').value], { type: 'text/javascript' })); a.download = 'dev-console.js'; a.click(); };
+</script></body></html>

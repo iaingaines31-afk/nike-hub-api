@@ -1,0 +1,76 @@
+(function (NHData, PASS) {
+  var AK = 'nikehub-accounts', SK = 'nikehub-session', EK = 'nikehub-session-exp', VK = 'nikehub-vault:', LK = 'nikehub-dev-log', MK = 'nikehub-session-minutes';
+  var PLAN_NAMES = ['free', 'pro', 'master', 'unlimited', 'owner'];
+  var enc = new TextEncoder(), dec = new TextDecoder(), sel = {}, logList = [], box;
+  function b64(a) { return btoa(String.fromCharCode.apply(null, new Uint8Array(a))); }
+  function ub(s) { return Uint8Array.from(atob(s), function (c) { return c.charCodeAt(0); }); }
+  // the action log is saved encrypted (AES-256-GCM) with a key made from your passphrase
+  async function key(salt) {
+    var k0 = await crypto.subtle.importKey('raw', enc.encode(PASS), 'PBKDF2', false, ['deriveKey']);
+    return crypto.subtle.deriveKey({ name: 'PBKDF2', salt: salt, iterations: 200000, hash: 'SHA-256' }, k0, { name: 'AES-GCM', length: 256 }, false, ['encrypt', 'decrypt']);
+  }
+  async function sealLog() {
+    var s = crypto.getRandomValues(new Uint8Array(16)), iv = crypto.getRandomValues(new Uint8Array(12));
+    var ct = await crypto.subtle.encrypt({ name: 'AES-GCM', iv: iv }, await key(s), enc.encode(JSON.stringify(logList)));
+    try { localStorage.setItem(LK, JSON.stringify({ s: b64(s), i: b64(iv), d: b64(ct) })); } catch (e) {}
+  }
+  async function openLog() {
+    try { var o = JSON.parse(localStorage.getItem(LK) || 'null'); if (!o) return [];
+      return JSON.parse(dec.decode(await crypto.subtle.decrypt({ name: 'AES-GCM', iv: ub(o.i) }, await key(ub(o.s)), ub(o.d)))); } catch (e) { return []; }
+  }
+  function log(t) { logList.unshift({ t: new Date().toLocaleString(), x: t }); logList = logList.slice(0, 100); sealLog(); }
+  function ld() { try { return JSON.parse(localStorage.getItem(AK) || '{}'); } catch (e) { return {}; } }
+  function sv(a) { try { localStorage.setItem(AK, JSON.stringify(a)); } catch (e) {} }
+  function mk() { var d = new Date(); return d.getFullYear() + '-' + ('0' + (d.getMonth() + 1)).slice(-2); }
+  function h(tag, text, fn) { var e = document.createElement(tag); if (text) e.textContent = text; if (fn) e.onclick = fn; return e; }
+  function sty(e) { e.style.cssText = 'font:inherit;color:inherit;background:#222;border:1px solid rgba(255,255,255,.15);border-radius:8px;padding:8px;margin:3px 0;cursor:pointer;width:100%'; return e; }
+  function vault(n) { try { var v = localStorage.getItem(VK + n); return v ? (v.length / 1024).toFixed(1) + ' KB, encrypted' : 'no vault'; } catch (e) { return '?'; } }
+  function chosen() { return Object.keys(sel); }
+  function need() { if (!chosen().length) { NHData.say('Select at least one user first.'); return false; } return true; }
+  function bulk(label, fn) { if (!need()) return; var all = ld(), n = chosen(); n.forEach(function (u) { if (all[u]) fn(all, u); }); sv(all); log(label + ': ' + n.join(', ')); NHData.say(label + ' done for ' + n.length + ' user(s).'); draw(); }
+
+  function draw() {
+    var all = ld(), names = Object.keys(all); box.textContent = '';
+    Object.keys(sel).forEach(function (n) { if (!all[n]) delete sel[n]; });
+    box.append(h('div', names.length + ' account' + (names.length === 1 ? '' : 's') + ' in this browser\'s data \u2014 ' + chosen().length + ' selected'));
+    // user selector: pick one user, or "All users" to select everyone
+    var pick = sty(h('select')); pick.append(new Option('\u2014 user selector \u2014', ''), new Option('All users (' + names.length + ')', '__all__'));
+    names.forEach(function (n) { pick.append(new Option(n, n)); });
+    pick.onchange = function () { sel = {}; if (pick.value === '__all__') names.forEach(function (n) { sel[n] = 1; }); else if (pick.value) sel[pick.value] = 1; draw(); };
+    box.append(pick);
+    var lab = h('label'), ca = document.createElement('input'); ca.type = 'checkbox'; ca.style.cssText = 'width:auto;margin-right:8px';
+    ca.checked = names.length > 0 && names.every(function (n) { return sel[n]; });
+    ca.onchange = function () { sel = {}; if (ca.checked) names.forEach(function (n) { sel[n] = 1; }); draw(); };
+    lab.append(ca, document.createTextNode('Select all users')); lab.style.cssText = 'display:block;margin:8px 0'; box.append(lab);
+    names.forEach(function (n) {
+      var a = all[n], us = a.usage && a.usage.m === mk() ? a.usage : { games: 0, console: 0 };
+      var row = h('div'); row.style.cssText = 'display:flex;align-items:center;gap:8px;padding:6px;border:1px solid rgba(255,255,255,.1);border-radius:8px;margin:4px 0;font-size:12px';
+      var cb = document.createElement('input'); cb.type = 'checkbox'; cb.checked = !!sel[n]; cb.style.width = 'auto';
+      cb.onchange = function () { if (cb.checked) sel[n] = 1; else delete sel[n]; draw(); };
+      var av = a.avatar ? document.createElement('img') : h('div', n.charAt(0).toUpperCase());
+      if (a.avatar) av.src = a.avatar; av.style.cssText = 'width:26px;height:26px;border-radius:50%;object-fit:cover;background:#444;text-align:center;line-height:26px;flex:none';
+      var info = h('div', n + ' \u2014 ' + (a.plan || 'free') + (a.planExp ? ' (to ' + a.planExp + ')' : '') + ' \u2014 games ' + us.games + ', console ' + us.console + ' \u2014 vault: ' + vault(n));
+      row.append(cb, av, info); box.append(row);
+    });
+    // actions on whoever is selected
+    var ps = sty(h('select')); PLAN_NAMES.forEach(function (p) { ps.append(new Option(p, p)); });
+    box.append(ps, sty(h('button', 'Set plan for selected', function () { bulk('Set plan ' + ps.value, function (a, u) { a[u].plan = ps.value; a[u].planStart = ''; a[u].planExp = ''; }); })));
+    box.append(sty(h('button', 'Reset this month\'s usage for selected', function () { bulk('Reset usage', function (a, u) { a[u].usage = { m: mk(), games: 0, console: 0 }; }); })));
+    box.append(sty(h('button', 'Sign out selected (if signed in here)', function () { if (!need()) return;
+      var cur = ''; try { cur = localStorage.getItem(SK) || ''; } catch (e) {}
+      if (cur && sel[cur]) { try { localStorage.removeItem(SK); localStorage.removeItem(EK); } catch (e) {} log('Signed out ' + cur); NHData.say('Signed out ' + cur + '.'); } else NHData.say('None of the selected users is signed in on this browser.'); })));
+    box.append(sty(h('button', 'DELETE selected accounts', function () { if (!need()) return;
+      if (!confirm('Delete ' + chosen().length + ' account(s) and their vaults? This cannot be undone.')) return;
+      var all2 = ld(), n = chosen(), cur = ''; try { cur = localStorage.getItem(SK) || ''; } catch (e) {}
+      n.forEach(function (u) { delete all2[u]; try { localStorage.removeItem(VK + u); } catch (e) {} if (u === cur) { try { localStorage.removeItem(SK); localStorage.removeItem(EK); } catch (e) {} } });
+      sv(all2); log('Deleted: ' + n.join(', ')); sel = {}; draw(); NHData.say('Deleted.'); })));
+    // auto-login length
+    var mins = sty(h('input')); mins.type = 'number'; mins.min = '1'; mins.max = '1440'; mins.placeholder = 'Auto-login minutes (1-1440)';
+    try { mins.value = localStorage.getItem(MK) || ''; } catch (e) {}
+    box.append(mins, sty(h('button', 'Save auto-login minutes', function () { var m = Math.max(1, Math.min(1440, parseInt(mins.value, 10) || 60)); try { localStorage.setItem(MK, String(m)); } catch (e) {} log('Auto-login set to ' + m + ' min'); NHData.say('Auto-login now lasts ' + m + ' minutes of inactivity.'); })));
+    box.append(sty(h('button', 'Refresh', draw)));
+    var lg = h('div', 'Encrypted action log (readable only with your passphrase):'); lg.style.cssText = 'margin-top:10px;font-size:12px;color:#aaa'; box.append(lg);
+    logList.slice(0, 15).forEach(function (l) { var d = h('div', l.t + ' \u2014 ' + l.x); d.style.cssText = 'font-size:12px;margin:2px 0'; box.append(d); });
+  }
+  openLog().then(function (l) { logList = l; NHData.register({ name: '\uD83D\uDEE0 Dev console', render: function (b) { box = b; draw(); } }); });
+})(NHData, PASS);
