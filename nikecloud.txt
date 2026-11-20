@@ -3117,7 +3117,7 @@ const EMBEDDED_KRILLION_B64 = "PCFkb2N0eXBlIGh0bWw+CjxodG1sIGxhbmc9ImVuIj48aGVhZ
   var sw;
   function paintSwitch() {
     if (!sw) return;
-    sw.textContent = "🛡 Shield: " + (on ? "ON" : "OFF");
+    sw.textContent = "☁ Cloud Protection: " + (on ? "ON" : "OFF");
     sw.style.background = on ? "rgba(30,120,60,.85)" : "rgba(90,90,90,.85)";
   }
   function setOn(v) {
@@ -3129,7 +3129,7 @@ const EMBEDDED_KRILLION_B64 = "PCFkb2N0eXBlIGh0bWw+CjxodG1sIGxhbmc9ImVuIj48aGVhZ
   function buildSwitch() {
     sw = document.createElement("button");
     sw.id = "cn-switch";
-    sw.title = "CloudNike shield (Alt+Shift+S)";
+    sw.title = "Cloud Protection on/off (Alt+Shift+S)";
     sw.style.cssText = "position:fixed;left:50%;transform:translateX(-50%);bottom:14px;z-index:99997;padding:7px 14px;font-size:13px;" +
       "font-weight:700;color:#fff;border:1px solid rgba(255,255,255,.35);border-radius:16px;cursor:pointer;opacity:.9;font-family:system-ui,sans-serif";
     sw.onmouseenter = function () { sw.style.opacity = "1"; };
